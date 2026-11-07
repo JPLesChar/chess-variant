@@ -223,5 +223,104 @@ class Game:
             self.current_turn = opp
 
 
+def run_streamlit_app():
+    import streamlit as st
+
+    st.set_page_config(page_title="4x4 Micro-Chess", page_icon="♟")
+    st.title("4x4 Micro-Chess Variant")
+    st.caption("Select your piece, then select its destination. Capture your opponent or reach their starting tile to win.")
+
+    if "game" not in st.session_state:
+        st.session_state.game = Game()
+        st.session_state.selected_square = None
+        st.session_state.winner = None
+        st.session_state.message = None
+
+    game = st.session_state.game
+    selected_square = st.session_state.selected_square
+    winner = st.session_state.winner
+
+    white_col, black_col = st.columns(2)
+    white_col.write(f"White: **{game.white_piece}** (A1)")
+    black_col.write(f"Black: **{game.black_piece}** (D4)")
+
+    if winner:
+        st.success(f"{winner} wins!")
+    else:
+        current_piece = game.white_piece if game.current_turn == "White" else game.black_piece
+        current_square = format_square(game.board.positions[game.current_turn])
+        st.info(f"{game.current_turn}'s turn: {current_piece} at {current_square}")
+
+    if st.button("New game"):
+        st.session_state.game = Game()
+        st.session_state.selected_square = None
+        st.session_state.winner = None
+        st.session_state.message = None
+        st.rerun()
+
+    if st.session_state.message:
+        st.warning(st.session_state.message)
+        st.session_state.message = None
+
+    for row in reversed(range(4)):
+        board_columns = st.columns(4)
+        for col, board_column in enumerate(board_columns):
+            square = (col, row)
+            square_name = format_square(square)
+            occupant = next(
+                (player for player, position in game.board.positions.items() if position == square),
+                None,
+            )
+            if occupant:
+                piece = game.white_piece if occupant == "White" else game.black_piece
+                label = PIECE_SYMBOLS[occupant][piece]
+            elif square == game.board.white_start:
+                label = ".w"
+            elif square == game.board.black_start:
+                label = ".b"
+            else:
+                label = "."
+
+            if square == selected_square:
+                label = f"[{label}]"
+
+            if board_column.button(
+                f"{square_name}  {label}",
+                key=f"square_{col}_{row}",
+                disabled=winner is not None,
+                type="primary" if square == selected_square else "secondary",
+                use_container_width=True,
+            ):
+                if selected_square is None:
+                    if square == game.board.positions[game.current_turn]:
+                        st.session_state.selected_square = square
+                    else:
+                        st.session_state.message = "Select your piece first."
+                elif square == selected_square:
+                    st.session_state.selected_square = None
+                else:
+                    error = game.validate_move(game.current_turn, selected_square, square)
+                    if error:
+                        st.session_state.message = error
+                    else:
+                        player = game.current_turn
+                        opponent = game.opponent(player)
+                        opponent_start = (
+                            game.board.black_start if player == "White" else game.board.white_start
+                        )
+                        captured = square == game.board.positions[opponent]
+                        game.board.positions[player] = square
+                        st.session_state.selected_square = None
+
+                        if captured or square == opponent_start:
+                            st.session_state.winner = player
+                        else:
+                            game.current_turn = opponent
+                st.rerun()
+
+    if st.session_state.selected_square is not None and winner is None:
+        st.caption(f"Selected {format_square(st.session_state.selected_square)}. Choose a destination.")
+
+
 if __name__ == "__main__":
-    Game().play()
+    run_streamlit_app()
